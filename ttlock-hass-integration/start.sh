@@ -32,7 +32,6 @@ if $(bashio::config.true "gateway_debug"); then
   export WEBSOCKET_DEBUG=1
 fi
 
-# Runtime SDK patches
 echo "Applying SDK patches..."
 node -e "
 const fs = require('fs');
@@ -53,10 +52,29 @@ let btDev = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluet
 if (!btDev.includes('LOCK_TYPE_V3 fallback')) {
   btDev = btDev.replace(
     'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            }',
-    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                // LOCK_TYPE_V3 fallback for locks advertising UUID without manufacturerData\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for device: \" + this.name);\n                }\n            }'
+    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                // LOCK_TYPE_V3 fallback for locks advertising UUID without manufacturerData\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for device: \" + this.id);\n                }\n            }'
   );
   fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', btDev);
   console.log('Patched lockType fallback');
+}
+
+// Patch 3: Increase SDK connect timeout from 10s to 30s
+let nobleDev = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/scanner/noble/NobleDevice.js', 'utf8');
+if (!nobleDev.includes('timeout = 30')) {
+  nobleDev = nobleDev.replace('async connect(timeout = 10)', 'async connect(timeout = 30)');
+  fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/scanner/noble/NobleDevice.js', nobleDev);
+  console.log('Patched connect timeout: 10s -> 30s');
+}
+
+// Patch 4: Fix manager to expose unknown locks to API
+let mgr = fs.readFileSync('/app/src/manager.js', 'utf8');
+if (!mgr.includes('unknown lock also added to newLocks')) {
+  mgr = mgr.replace(
+    '    } else {\n      console.log(\"Discovered unknown lock:\", lock.toJSON());\n    }',
+    '    } else {\n      // unknown lock also added to newLocks so API can see and pair it\n      console.log(\"Discovered unknown lock (adding to newLocks):\", lock.toJSON());\n      if (!this.newLocks.has(lock.getAddress())) {\n        this.newLocks.set(lock.getAddress(), lock);\n        listChanged = true;\n      }\n    }'
+  );
+  fs.writeFileSync('/app/src/manager.js', mgr);
+  console.log('Patched manager to expose unknown locks');
 }
 "
 
