@@ -41,7 +41,7 @@ let bleSvc = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/scanner/Bluet
 if (!bleSvc.includes('021a9004')) {
   bleSvc = bleSvc.replace(
     'exports.TTLockUUIDs = [\"1910\", \"00001910-0000-1000-8000-00805f9b34fb\"]',
-    'exports.TTLockUUIDs = [\"1910\", \"00001910-0000-1000-8000-00805f9b34fb\", \"021a9004-0382-4aea-bff4-6b3f1c5adfb4\"]'
+    'exports.TTLockUUIDs = [\"1910\", \"00001910-0000-1000-8000-00805f9b34fb\", \"021a9004-0382-4aea-bff4-6b3f1c5adfb4\", \"7aebf330-6cb1-46e4-b23b-7cc2262c605e\"]'
   );
   fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/scanner/BluetoothLeService.js', bleSvc);
   console.log('Patch 1: UUID filter');
@@ -52,7 +52,7 @@ let btDev = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluet
 if (!btDev.includes('LOCK_TYPE_V3 fallback')) {
   btDev = btDev.replace(
     'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            }',
-    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                // LOCK_TYPE_V3 fallback for locks advertising UUID without manufacturerData\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    if (!this.address && this.id) {\n                        this.address = this.id.match(/.{2}/g).join(\":\").toUpperCase();\n                    }\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for: \" + this.address);\n                }\n            }'
+    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    if (!this.address && this.id) {\n                        this.address = this.id.match(/.{2}/g).join(\":\").toUpperCase();\n                    }\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for: \" + this.address);\n                }\n            }'
   );
   fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', btDev);
   console.log('Patch 2: lockType fallback + address');
@@ -71,27 +71,28 @@ let mgr = fs.readFileSync('/app/src/manager.js', 'utf8');
 if (!mgr.includes('unknown lock also added to newLocks')) {
   mgr = mgr.replace(
     '    } else {\n      console.log(\"Discovered unknown lock:\", lock.toJSON());\n    }',
-    '    } else {\n      // unknown lock also added to newLocks so API can see and pair it\n      console.log(\"Discovered unknown lock (adding to newLocks):\", lock.toJSON());\n      if (!this.newLocks.has(lock.getAddress())) {\n        this.newLocks.set(lock.getAddress(), lock);\n        listChanged = true;\n      }\n    }'
+    '    } else {\n      console.log(\"Discovered unknown lock (adding to newLocks):\", lock.toJSON());\n      if (!this.newLocks.has(lock.getAddress())) {\n        this.newLocks.set(lock.getAddress(), lock);\n        listChanged = true;\n      }\n    }'
   );
   fs.writeFileSync('/app/src/manager.js', mgr);
   console.log('Patch 4: expose unknown locks');
 }
 
-// Patch 5: Service UUID fallback -- lock uses 021a9004 instead of 1910
+// Patch 5: Service UUID fallback -- try 7aebf330 as the lock data service
+// Also add GATT dump logging to subscribe() to see all service characteristics
 btDev = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', 'utf8');
-if (!btDev.includes('021a9004-0382-4aea-bff4-6b3f1c5adfb4')) {
-  // Fix subscribe() service lookup (line 118-119)
+if (!btDev.includes('7aebf330')) {
+  // Replace the subscribe service lookup to try all known TTLock service UUIDs
   btDev = btDev.replace(
     'if (this.device.services.has(\"1910\")) {\n                service = this.device.services.get(\"1910\");\n            }',
-    'if (this.device.services.has(\"1910\")) {\n                service = this.device.services.get(\"1910\");\n            } else if (this.device.services.has(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\")) {\n                service = this.device.services.get(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\");\n                console.log(\"Using 021a9004 service UUID instead of 1910\");\n            }'
+    '// GATT dump: log all discovered services and their characteristics\n            for (let [svcUuid, svc] of this.device.services) {\n                console.log(\"GATT Service: \" + svcUuid);\n                if (svc.characteristics && svc.characteristics.size === 0) {\n                    await svc.readCharacteristics();\n                }\n                for (let [charUuid, chr] of svc.characteristics) {\n                    console.log(\"  Char: \" + charUuid + \" props: \" + JSON.stringify(chr.properties));\n                }\n            }\n            if (this.device.services.has(\"1910\")) {\n                service = this.device.services.get(\"1910\");\n            } else if (this.device.services.has(\"7aebf330-6cb1-46e4-b23b-7cc2262c605e\")) {\n                service = this.device.services.get(\"7aebf330-6cb1-46e4-b23b-7cc2262c605e\");\n                console.log(\"Using 7aebf330 service as lock data service\");\n            } else if (this.device.services.has(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\")) {\n                service = this.device.services.get(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\");\n                console.log(\"Using 021a9004 service (Espressif provisioning)\");\n            }'
   );
-  // Fix sendCommand() service lookup (line 159)
+  // Also fix sendCommand
   btDev = btDev.replace(
     'const service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"1910\");',
-    'let service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"1910\");\n            if (!service) { service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\"); }'
+    'let service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"1910\");\n            if (!service) { service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"7aebf330-6cb1-46e4-b23b-7cc2262c605e\"); }\n            if (!service) { service = (_a = this.device) === null || _a === void 0 ? void 0 : _a.services.get(\"021a9004-0382-4aea-bff4-6b3f1c5adfb4\"); }'
   );
   fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', btDev);
-  console.log('Patch 5: service UUID 021a9004 fallback');
+  console.log('Patch 5: GATT dump + 7aebf330 service fallback');
 }
 "
 
