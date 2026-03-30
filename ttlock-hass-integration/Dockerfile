@@ -3,9 +3,8 @@ FROM $BUILD_FROM
 
 ENV LANG C.UTF-8
 
-RUN apk update
-RUN apk add --no-cache nodejs npm python3 py3-pip alpine-sdk libcap bluez bluez-dev eudev-dev
-RUN setcap cap_net_raw+eip $(eval readlink -f $(which node))
+RUN apk update && apk add --no-cache nodejs npm python3 make g++ libcap bluez bluez-dev eudev-dev linux-headers
+RUN setcap cap_net_raw+eip $(readlink -f $(which node))
 
 WORKDIR /
 
@@ -15,8 +14,6 @@ RUN rm -rf /app/node_modules
 
 RUN cd /app && npm i
 
-# here we should just copy the /app contents to a run image with nodejs and other requirements only
-
 ENTRYPOINT ["/app/start.sh"]
 
-LABEL io.hass.version="VERSION" io.hass.type="addon" io.hass.arch="armhf|aarch64|i386|amd64"
+LABEL io.hass.version="0.4.11" io.hass.type="addon" io.hass.arch="aarch64|amd64"
