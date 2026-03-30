@@ -47,15 +47,15 @@ if (!bleSvc.includes('021a9004')) {
   console.log('Patched UUID filter');
 }
 
-// Patch 2: Default lockType for devices without manufacturerData
+// Patch 2: Default lockType AND address for devices without manufacturerData
 let btDev = fs.readFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', 'utf8');
 if (!btDev.includes('LOCK_TYPE_V3 fallback')) {
   btDev = btDev.replace(
     'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            }',
-    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                // LOCK_TYPE_V3 fallback for locks advertising UUID without manufacturerData\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for device: \" + this.id);\n                }\n            }'
+    'if (this.device.manufacturerData.length >= 15) {\n                this.parseManufacturerData(this.device.manufacturerData);\n            } else {\n                // LOCK_TYPE_V3 fallback for locks advertising UUID without manufacturerData\n                const Lock_fb = require(\"../constant/Lock\");\n                if (this.lockType === Lock_fb.LockType.UNKNOWN) {\n                    this.lockType = Lock_fb.LockType.LOCK_TYPE_V3;\n                    this.protocolType = 5;\n                    this.protocolVersion = 3;\n                    // Derive address from device.id (MAC without colons)\n                    if (!this.address && this.id) {\n                        this.address = this.id.match(/.{2}/g).join(\":\").toUpperCase();\n                    }\n                    console.log(\"Applied LOCK_TYPE_V3 fallback for: \" + this.address);\n                }\n            }'
   );
   fs.writeFileSync('/app/node_modules/ttlock-sdk-js/dist/device/TTBluetoothDevice.js', btDev);
-  console.log('Patched lockType fallback');
+  console.log('Patched lockType fallback + address derivation');
 }
 
 // Patch 3: Increase SDK connect timeout from 10s to 30s
