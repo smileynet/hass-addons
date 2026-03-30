@@ -1,5 +1,5 @@
 name: TTLock
-version: "0.4.11"
+version: "0.4.14"
 slug: ttlock-hass-integration
 description: Integration of the offline TTLock SDK into Home Assistant
 url: https://github.com/smileynet/hass-addons
